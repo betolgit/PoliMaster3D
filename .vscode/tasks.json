@@ -1,0 +1,31 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build",
+			"type": "PlatformIO",
+			"task": "Build",
+			"problemMatcher": [
+				"$platformio"
+			],
+			"group": "build",			
+		},
+		{
+			"label": "launch_gdb_server",
+            "type": "shell",
+            "command": "cd /home/peter/prj/esp32/openocd/bin/ && /home/peter/prj/esp32/openocd/bin/openocd -f /home/peter/prj/esp32/openocd/bin/esp32-wrover-kit-3.3v.cfg &"
+		},
+		{
+			"label": "flash",
+            "type": "shell",
+            "command": "cd /home/peter/prj/esp32/openocd/bin/ && ./openocd -f esp32-wrover-kit-3.3v.cfg -c \"program_esp /home/peter/prj/esp32/esp32_test/.pio/build/esp-wrover-kit/firmware.bin 0x10000 verify exit\""
+		},
+		{
+			"label": "Pre-Debug",			
+			"dependsOn":[
+				"Build",
+				"flash"
+			]
+		}
+	]
+}

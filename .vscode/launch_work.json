@@ -1,0 +1,30 @@
+{
+  "name": "ESP32 Wrover Kit (all versions) (esptool)",
+  "cwd": "${workspaceRoot}",
+  "request": "attach",
+  "type": "cortex-debug",
+  "executable": "/home/peter/prj/esp32/esp32_test/.pio/build/esp-wrover-kit/firmware.elf",
+  "toolchainPrefix": "xtensa-esp32-elf",
+  "svdFile": "/home/peter/.arduino15/packages/esp32/hardware/esp32/3.0.3/tools/ide-debug/svd/esp32.svd",
+  "objdumpPath": "/home/peter/.arduino15/packages/esp32/tools/esp-x32/2302/bin/xtensa-esp32-elf-objdump",
+  "preLaunchTask": "Pre-Debug",
+  "overrideRestartCommands": [
+    "monitor reset halt",
+    "monitor gdb_sync",
+    "thb loop",
+    "c"
+  ],
+  "postAttachCommands": [
+    "set remote hardware-watchpoint-limit 2",
+    "monitor reset halt",        
+    "monitor gdb_sync",
+    "thb loop",
+    "c"
+  ],
+  "serverpath": "/home/peter/.arduino15/packages/esp32/tools/openocd-esp32/v0.12.0-esp32-20240318/bin/openocd",
+  "servertype": "openocd",
+  "armToolchainPath": "/home/peter/.arduino15/packages/esp32/tools/xtensa-esp-elf-gdb/12.1_20231023/bin/",
+  "configFiles": [
+    "board/esp32-wrover-kit-3.3v.cfg"
+  ]
+},
