@@ -45,6 +45,10 @@ void setup() {
   ledcSetup(1, 5000, 8); // 加热块PWM通道
   ledcAttachPin(heaterPin, 1);
 
+  // 在 setup 函数中初始化 ultrasonicEnablePin
+  pinMode(ultrasonicEnablePin, OUTPUT);
+  digitalWrite(ultrasonicEnablePin, HIGH); // 初始为高电平
+
   // 将 ultrasonicPin 配置为 DAC
   // 假设 ultrasonicPin 是 GPIO 25 或 GPIO 26
   // ESP32 的 DAC 通道分别是 25 (DAC1) 和 26 (DAC2)
@@ -85,25 +89,6 @@ void setup() {
   Serial.print("AP IP Address: ");
   IPAddress ap_ip = WiFi.softAPIP();
   Serial.println(ap_ip.toString());
-
-  // Serial.print("Connecting to WiFi");
-  // while (WiFi.status() != WL_CONNECTED) {
-  //   delay(500);
-  //   Serial.print(".");
-  // }
-  // Serial.println("Connected!");
-  // Serial.print("IP Address: ");
-  // IPAddress ip = WiFi.localIP();
-  // Serial.println(ip.toString() + ":" + String(port));
-
-
-
-  // WiFi.mode(WIFI_AP);
-  // WiFi.softAP(ssid, password); // 设置SSID和密码（空密码）
-
-  // Serial.println("WiFi Access Point Started");
-  // Serial.print("IP Address: ");
-  // Serial.println(WiFi.softAPIP()); // 打印AP模式下的IP地址
 
   //mDNS
   if (!MDNS.begin("polimaster")) {  // "esp32"是你为设备设置的mDNS主机名
@@ -158,6 +143,8 @@ void setup() {
           ultrasonicEnabled = request->getParam("value")->value() == "true"; // 更新全局变量
           // 在此处更新 ultrasonicEnabled 的状态，可能需要保存到 EEPROM 或其他存储
           // 例如: eepromWriteUltrasonicEnabled(ultrasonicEnabled);
+          // 设置 ultrasonicEnablePin 的电平
+          digitalWrite(ultrasonicEnablePin, ultrasonicEnabled ? LOW : HIGH);
 
           request->send(200, "text/plain", "Ultrasonic enabled set to " + String(ultrasonicEnabled ? "true" : "false"));
       } else {
@@ -174,7 +161,8 @@ void setup() {
       String json = "{\"fanSpeed\": " + String(fanSpeed) + 
                     ", \"heaterPower\": " + String(heaterPower) + 
                     ", \"ultrasonicVoltage\": " + String(ultrasonicVoltage) + 
-                    ", \"ultrasonicSwitch\": " + (ultrasonicEnabled ? "true" : "false") + "}";
+                    ", \"ultrasonicSwitch\": " + (ultrasonicEnabled ? "true" : "false") + 
+                    ", \"ipAddress\": \"" + WiFi.localIP().toString() + "\"}"; // 添加 IP 地址
       request->send(200, "application/json", json);
   });
 

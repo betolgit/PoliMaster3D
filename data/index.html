@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    
     <title>ESP32 Control</title>
     <style>
       /* Fullscreen background video */
@@ -94,6 +94,10 @@ span {
     text-align: right; /* 右对齐，保持整洁 */
 }
 
+#qrcode {
+    text-align: center;
+    margin-top: 20px;
+}
 
 footer {
     text-align: center;
@@ -177,6 +181,9 @@ input:checked + .slider:before {
 }
 
     </style>
+
+    <script src="https://davidshimjs.github.io/qrcodejs/qrcode.min.js"></script>
+
 </head>
 <body>
     <!-- Fullscreen background video -->
@@ -205,6 +212,10 @@ input:checked + .slider:before {
         </p>
 
         <p>加热器实时温度: <span id="temperature">0</span> °C</p>
+
+        <p>主页地址: <span id="homepageUrl"></span></p>
+        <div id="qrcode"></div>
+
     </div>
     <footer>3D打印件抛光解决方案 - Powered by 广西易微三维科技有限公司</footer>
 
@@ -233,12 +244,20 @@ input:checked + .slider:before {
                     if (response.ok) {
                         online = true;
                         updateStatusIndicator(true);
+                        
                         return response.json();
                     } else {
                         throw new Error('Network response was not ok.');
                     }
                 })
                 .then(data => {
+                    // 显示 IP 地址
+                    const homepageUrl = `http://${data.ipAddress}`; // 使用 IP 地址
+                    document.getElementById('homepageUrl').innerText = homepageUrl;
+
+                    // 生成二维码
+                    new QRCode(document.getElementById("qrcode"), homepageUrl);
+
                     document.getElementById('fanSpeed').value = data.fanSpeed || 0; // 默认值
                     document.getElementById('fanSpeedValue').innerText = data.fanSpeed || 0;
                     document.getElementById('heaterPower').value = data.heaterPower || 20; // 默认值
