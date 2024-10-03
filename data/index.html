@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Control</title>
+    <title>PoliMaster3D-易微三维</title>
     <style>
         /* Fullscreen background video */
         body {
@@ -233,7 +233,7 @@
 
         <p class="small-font">主页地址: <span id="homepageUrl"></span> (当前SSID: <span id="currentSSID"></span>)</p>
         <p>选择SSID:
-            <select id="ssidSelect" onclick="connectToSelectedSSID()">
+            <select id="ssidSelect" onchange="connectToSelectedSSID()">
                 <option value="">选择一个SSID</option>
             </select>
         </p>
