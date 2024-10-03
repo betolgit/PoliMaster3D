@@ -4,152 +4,252 @@
 #include <FS.h>
 #include <SPIFFS.h>
 #include <ESPmDNS.h>
+#include <EEPROM.h>
+#include <set>
+#include <vector>
+#include <random>
+#include "esp_task_wdt.h"
 
-// WiFi配置
-const char* sta_ssid = "廖氏锁业";         // 现有的 Wi-Fi 网络 SSID
-const char* sta_password = "1234qwer";     // 现有的 Wi-Fi 网络密码
-const char* ap_ssid = "newPeterDoor";      // ESP32 作为 AP 时的 SSID
-const char* ap_password = "";   // ESP32 作为 AP 时的密码（可选）
+const char* base_ssid = "POLIMASTER"; // AP SSID
+char ap_ssid[32]; // Buffer for SSID
+const char* ap_password = ""; // AP password
+const int eepromSize = 512; // EEPROM size
+const int maxEntries = 10; // Max SSID and password entries
 
-const u32_t port = 80;
-// const char* ssid = "newPeterDoor"; // 新的SSID
-// const char* password = ""; // 空密码
+AsyncWebServer server(80); // Web server instance
 
-// Web服务器实例
-AsyncWebServer server(port);
-
-// PWM引脚配置
+// Pin configurations
 const int fanPin = 27;
 const int heaterPin = 26;
 const int ultrasonicPin = 25;
 const int ultrasonicEnablePin = 33;
+const int ntcPin = 34; // Temperature sensor pin
 
-// 温度传感器引脚配置
-const int ntcPin = 34;
+// Device state variables
+int fanSpeed = 0;
+int heaterPower = 0;
+int ultrasonicVoltage = 0;
+float temperature = 0.0;
+bool ultrasonicEnabled = false;
+bool scanning = false;
+std::vector<String> ssids;
 
-// 温度和PWM设置
-int fanSpeed = 0; // 风扇转速PWM值
-int heaterPower = 0; // 加热块PWM值
-int ultrasonicVoltage = 0; // 超声波电压（DAC值）
-float temperature = 0.0; // 温度值
-bool ultrasonicEnabled = false; // 超声波开关
+String currentSSID;
+String currentSSIDPassword;
+String ssid, password;
+bool connecting = false;
+unsigned long timer; // Declare timer here
 
-// 温度传感器读取函数声明
+// Function prototypes
 float readNTCTemperature();
+void startScan();
+void handleScanResults();
+void onTimer();
+bool connectToWiFi(int numWiFiFound);
+void setupServerRoutes();
+void saveWiFiCredentials(const char* ssid, const char* password, bool success);
+String readStringFromEEPROM(int address);
+void writeStringToEEPROM(int address, const char* str);
+void setupWiFi();
+void setupMDNS();
+void setupSPIFFS();
+void setupPWM();
+
+// Function prototypes
+bool tryConnect(const String& ssid, const String& password);
+void handlePWMRequest(AsyncWebServerRequest *request, int &powerVariable, int pin, int minValue, int maxValue);
+void handleUltrasonicVoltage(AsyncWebServerRequest *request);
+void handleUltrasonicSwitch(AsyncWebServerRequest *request);
+String getSettingsJSON();
+String getSSIDsJSON();
+void setupEditRoutes();
+String getEditSSIDsJSON();
+
 
 void setup() {
   Serial.begin(115200);
+  EEPROM.begin(eepromSize);
+  
+  setupPWM();
+  setupWiFi();
+  setupMDNS();
+  setupSPIFFS();
+  setupServerRoutes();
+  
+  server.begin();
+}
 
-  ledcSetup(0, 5000, 8); // 风扇PWM通道
+void setupPWM() {
+  ledcSetup(0, 5000, 8);
   ledcAttachPin(fanPin, 0);
-  ledcSetup(1, 5000, 8); // 加热块PWM通道
+  ledcSetup(1, 5000, 8);
   ledcAttachPin(heaterPin, 1);
-
-  // 在 setup 函数中初始化 ultrasonicEnablePin
   pinMode(ultrasonicEnablePin, OUTPUT);
-  digitalWrite(ultrasonicEnablePin, HIGH); // 初始为高电平
+  digitalWrite(ultrasonicEnablePin, HIGH);
 
-  // 将 ultrasonicPin 配置为 DAC
-  // 假设 ultrasonicPin 是 GPIO 25 或 GPIO 26
-  // ESP32 的 DAC 通道分别是 25 (DAC1) 和 26 (DAC2)
   if (ultrasonicPin == 25 || ultrasonicPin == 26) {
-    // 设置 ultrasonicPin 为 DAC 输出
-    analogWriteResolution(8); // 8-bit 分辨率
-    dacWrite(ultrasonicPin, 255); // 初始化 DAC 输出为 0
+    analogWriteResolution(8);
+    dacWrite(ultrasonicPin, 255);
   } else {
-    // 处理其他引脚的配置（如果需要）
-    Serial.println("ultrasonicPin 不是有效的 DAC 引脚。");
+    Serial.println("Invalid DAC pin for ultrasonic.");
   }
+}
 
-  // 设置 ESP32 为 STA 和 AP 模式
+void setupWiFi() {
   WiFi.mode(WIFI_AP_STA);
-  
-  
-  // 配置 AP 模式
-  WiFi.softAP(ap_ssid, ap_password);
-  Serial.println("AP Started");
-  
-  // 配置 STA 模式
-  WiFi.begin(sta_ssid, sta_password);
 
-  Serial.print("Connecting to WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  // Check for nearby networks
+  Serial.println("Scanning WiFi networks...");
+  int numNetworks = WiFi.scanNetworks();
+  bool ssidConflict = false;
+
+  // Check if the base SSID is in use
+  for (int i = 0; i < numNetworks; i++) {
+    if (WiFi.SSID(i) == base_ssid) {
+      ssidConflict = true;
+      break;
+    }
   }
-  
-  Serial.println("Connected!");
-  
-  // 打印 STA 模式的 IP 地址
+
+  // If there's a conflict, append a random postfix
+  if (ssidConflict) {
+    snprintf(ap_ssid, sizeof(ap_ssid), "%s_%d", base_ssid, random(1000, 9999));
+  } else {
+    snprintf(ap_ssid, sizeof(ap_ssid), "%s", base_ssid);
+  }
+
+  // Start the AP
+  WiFi.softAP(ap_ssid, ap_password);
+  Serial.println("AP Started with SSID: " + String(ap_ssid));
+
+  if (!connectToWiFi(numNetworks)) {
+    Serial.println("No valid WiFi credentials found.");
+  }
+
   Serial.print("STA IP Address: ");
-  IPAddress sta_ip = WiFi.localIP();
-  Serial.println(sta_ip.toString());
-
-  // 打印 AP 模式的 IP 地址
+  Serial.println(WiFi.localIP());
   Serial.print("AP IP Address: ");
-  IPAddress ap_ip = WiFi.softAPIP();
-  Serial.println(ap_ip.toString());
+  Serial.println(WiFi.softAPIP());
+}
 
-  //mDNS
-  if (!MDNS.begin("polimaster")) {  // "esp32"是你为设备设置的mDNS主机名
+void setupMDNS() {
+  if (!MDNS.begin("polimaster")) {
     Serial.println("Error starting mDNS");
-    return;
   }
   Serial.println("mDNS responder started");
-  Serial.print("You can access the web server at http://polimaster.local:"+String(port)+"/");
+}
 
+void setupSPIFFS() {
   if (!SPIFFS.begin()) {
     Serial.println("An error occurred while mounting SPIFFS");
-    return;
+  }
+}
+
+
+bool connectToWiFi(int numWiFiFound) {
+  Serial.println("Scanning WiFi networks...");
+  int n = numWiFiFound;
+  Serial.println("Available networks:");
+  std::set<String> uniqueSSIDs;
+
+  for (int j = 0; j < n; ++j) {
+    uniqueSSIDs.insert(WiFi.SSID(j));
   }
 
+  for (const auto& ssid: uniqueSSIDs){
+    Serial.println(ssid);
+  }
+
+  for (int i = 0; i < maxEntries; i++) {
+    char validByte = EEPROM.read(i * 33 + 32); // Read validity first
+
+    // Only read SSID and password if the entry is valid
+    if (validByte == 1) {
+      String savedSSID = readStringFromEEPROM(i * 33); // First 16 bytes
+      String password = readStringFromEEPROM(i * 33 + 16); // Next 16 bytes
+
+      if (uniqueSSIDs.count(savedSSID) && !password.isEmpty() && tryConnect(savedSSID, password)) {        
+        return true; // Successful connection
+      }
+    }
+  }
+  return false; // No connection made
+}
+
+bool tryConnect(const String& ssid, const String& password) {
+  Serial.print("Trying WiFi: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid.c_str(), password.c_str());
+
+  int currentTry = 0;
+  while (WiFi.status() != WL_CONNECTED && currentTry < 3) {
+        // Reset the watchdog timer
+        ++currentTry;
+        esp_task_wdt_reset();
+        delay(1000); // Delay for a bit before retrying
+  }
+
+  if(currentTry < 3){
+    currentSSID = ssid;
+    currentSSIDPassword = password;
+    Serial.println("WIFI connected: "+ssid);
+    return true;
+  }
+  else{
+    WiFi.disconnect();
+    Serial.println("WIFI connection failed: "+ssid);
+    return false;   
+  }
+}
+
+void saveWiFiCredentials(const char* ssid, const char* password, bool success) {
+  for (int i = maxEntries - 1; i > 0; i--) {
+    writeStringToEEPROM(i * 33, readStringFromEEPROM((i - 1) * 33).c_str());
+    writeStringToEEPROM(i * 33 + 16, readStringFromEEPROM((i - 1) * 33 + 16).c_str());
+    EEPROM.write(i * 33 + 32, EEPROM.read((i - 1) * 33 + 32));
+  }
+  
+  writeStringToEEPROM(0, ssid);
+  writeStringToEEPROM(16, password);
+  EEPROM.write(32, success ? 1 : 0);
+  EEPROM.commit();
+}
+
+void writeStringToEEPROM(int address, const char* str) {
+  for (int i = 0; i < 16; i++) {
+    EEPROM.write(address + i, str[i] ? str[i] : 0);
+  }
+}
+
+String readStringFromEEPROM(int address) {
+  String data = "";
+  for (int i = 0; i < 16; i++) {
+    char c = EEPROM.read(address + i);
+    if (c == 0) break;
+    data += c;
+  }
+  return data;
+}
+
+void setupServerRoutes() {
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/index.html", String(), false);
   });
 
   server.on("/setFanSpeed", HTTP_GET, [](AsyncWebServerRequest *request){
-    if (request->hasParam("value")) {
-      fanSpeed = request->getParam("value")->value().toInt();
-      ledcWrite(0, map(fanSpeed, 0, 100, 0, 255));
-      request->send(200, "text/plain", "Fan speed set to " + String(fanSpeed));
-    } else {
-      request->send(400, "text/plain", "Missing value parameter");
-    }
+    handlePWMRequest(request, fanSpeed, fanPin, 0, 255);
   });
 
   server.on("/setHeaterPower", HTTP_GET, [](AsyncWebServerRequest *request){
-    if (request->hasParam("value")) {
-      heaterPower = request->getParam("value")->value().toInt();
-      ledcWrite(1, map(heaterPower, 20, 95, 0, 255));
-      request->send(200, "text/plain", "Heater power set to " + String(heaterPower));
-    } else {
-      request->send(400, "text/plain", "Missing value parameter");
-    }
+    handlePWMRequest(request, heaterPower, heaterPin, 20, 95);
   });
 
   server.on("/setUltrasonicVoltage", HTTP_GET, [](AsyncWebServerRequest *request){
-    if (request->hasParam("value")) {
-      ultrasonicVoltage = request->getParam("value")->value().toInt();
-      dacWrite(ultrasonicPin, map(ultrasonicVoltage, 1.6, 24, 255, 112));
-      request->send(200, "text/plain", "Ultrasonic voltage set to " + String(ultrasonicVoltage));
-    } else {
-      request->send(400, "text/plain", "Missing value parameter");
-    }
+    handleUltrasonicVoltage(request);
   });
 
-    // 新增处理超声波开关状态的路由
   server.on("/setUltrasonicEnabled", HTTP_GET, [](AsyncWebServerRequest *request){
-      if (request->hasParam("value")) {
-          ultrasonicEnabled = request->getParam("value")->value() == "true"; // 更新全局变量
-          // 在此处更新 ultrasonicEnabled 的状态，可能需要保存到 EEPROM 或其他存储
-          // 例如: eepromWriteUltrasonicEnabled(ultrasonicEnabled);
-          // 设置 ultrasonicEnablePin 的电平
-          digitalWrite(ultrasonicEnablePin, ultrasonicEnabled ? LOW : HIGH);
-
-          request->send(200, "text/plain", "Ultrasonic enabled set to " + String(ultrasonicEnabled ? "true" : "false"));
-      } else {
-          request->send(400, "text/plain", "Missing value parameter");
-      }
+    handleUltrasonicSwitch(request);
   });
 
   server.on("/getTemperature", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -158,25 +258,224 @@ void setup() {
   });
 
   server.on("/getSettings", HTTP_GET, [](AsyncWebServerRequest *request){
-      String json = "{\"fanSpeed\": " + String(fanSpeed) + 
-                    ", \"heaterPower\": " + String(heaterPower) + 
-                    ", \"ultrasonicVoltage\": " + String(ultrasonicVoltage) + 
-                    ", \"ultrasonicSwitch\": " + (ultrasonicEnabled ? "true" : "false") + 
-                    ", \"ipAddress\": \"" + WiFi.localIP().toString() + "\"}"; // 添加 IP 地址
-      request->send(200, "application/json", json);
+    request->send(200, "application/json", getSettingsJSON());
   });
 
-  server.begin();
+  server.on("/scanSSIDs", HTTP_GET, [](AsyncWebServerRequest *request) {
+    startScan();
+    request->send(200, "text/plain", "Scanning started. Check back later for results.");
+  });
+
+  server.on("/getSSIDs", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!scanning && !ssids.empty()) {
+      request->send(200, "application/json", getSSIDsJSON());
+    } else {
+      request->send(200, "text/plain", "Scan in progress or no results available.");
+    }
+  });
+
+  server.on("/connectWiFi", HTTP_GET, [](AsyncWebServerRequest *request) {    
+    if (request->hasParam("ssid") && request->hasParam("password")) {
+      // Access parameters safely
+      ssid = request->getParam("ssid")->value();
+      password = request->getParam("password")->value();
+    } else {
+      request->send(400, "text/plain", "Missing parameters.");
+      return;
+    }
+    
+    request->send(200, "text/plain", "ssid and password received.");    
+    // Start the non-blocking delay
+    connecting = true;
+    // Set a timer for 100 ms (using millis() in loop)
+    // Note: If using a timer library, you might replace this with that logic
+    timer = millis() + 100; // Adjust based on your needs
+  });
+
+  // Additional static file serving routes
+  server.serveStatic("/qrcode.min.js", SPIFFS, "/qrcode.min.js");
+  server.serveStatic("/eeprom_edit.html", SPIFFS, "/eeprom_edit.html");
+
+  setupEditRoutes();
+}
+
+void setupEditRoutes() {
+  server.on("/getEditSSIDs", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "application/json", getEditSSIDsJSON());
+  });
+
+  server.on("/editSSID", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("index") && request->hasParam("ssid") && request->hasParam("password")) {
+      int index = request->getParam("index")->value().toInt();
+      String ssid = request->getParam("ssid")->value();
+      String password = request->getParam("password")->value();
+
+      if (index >= 0 && index < maxEntries) {
+        writeStringToEEPROM(index * 33, ssid.c_str());
+        writeStringToEEPROM(index * 33 + 16, password.c_str());
+        EEPROM.write(index * 33 + 32, 1);
+        EEPROM.commit();
+        request->send(200, "text/plain", "SSID and password updated successfully.");
+      } else {
+        request->send(400, "text/plain", "Index out of range.");
+      }
+    } else {
+      request->send(400, "text/plain", "Missing parameters.");
+    }
+  });
+
+  server.on("/deleteSSID", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("index")) {
+      int index = request->getParam("index")->value().toInt();
+      if (index >= 0 && index < maxEntries) {
+        writeStringToEEPROM(index * 33, "");
+        writeStringToEEPROM(index * 33 + 16, "");
+        EEPROM.write(index * 33 + 32, 0);
+        EEPROM.commit();
+        request->send(200, "text/plain", "SSID deleted successfully.");
+      } else {
+        request->send(400, "text/plain", "Index out of range.");
+      }
+    } else {
+      request->send(400, "text/plain", "Missing parameters.");
+    }
+  });
+
+  server.on("/pasteSSID", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("targetIndex") && request->hasParam("sourceIndex")) {
+      int targetIndex = request->getParam("targetIndex")->value().toInt();
+      int sourceIndex = request->getParam("sourceIndex")->value().toInt();
+
+      if (targetIndex >= 0 && targetIndex < maxEntries && sourceIndex >= 0 && sourceIndex < maxEntries) {
+        String ssid = readStringFromEEPROM(sourceIndex * 33);
+        String password = readStringFromEEPROM(sourceIndex * 33 + 16);
+        writeStringToEEPROM(targetIndex * 33, ssid.c_str());
+        writeStringToEEPROM(targetIndex * 33 + 16, password.c_str());
+        EEPROM.write(targetIndex * 33 + 32, 1);
+        EEPROM.commit();
+        request->send(200, "text/plain", "Pasted SSID and password.");
+      } else {
+        request->send(400, "text/plain", "Index out of range.");
+      }
+    } else {
+      request->send(400, "text/plain", "Missing parameters.");
+    }
+  });
+}
+
+void handlePWMRequest(AsyncWebServerRequest *request, int &powerVariable, int pin, int minValue, int maxValue) {
+  if (request->hasParam("value")) {
+    powerVariable = request->getParam("value")->value().toInt();
+    ledcWrite(pin, map(powerVariable, minValue, maxValue, 0, 255));
+    request->send(200, "text/plain", "Value set to " + String(powerVariable));
+  } else {
+    request->send(400, "text/plain", "Missing value parameter");
+  }
+}
+
+void handleUltrasonicVoltage(AsyncWebServerRequest *request) {
+  if (request->hasParam("value")) {
+    ultrasonicVoltage = request->getParam("value")->value().toInt();
+    dacWrite(ultrasonicPin, map(ultrasonicVoltage, 1.6, 24, 255, 112));
+    request->send(200, "text/plain", "Ultrasonic voltage set to " + String(ultrasonicVoltage));
+  } else {
+    request->send(400, "text/plain", "Missing value parameter");
+  }
+}
+
+void handleUltrasonicSwitch(AsyncWebServerRequest *request) {
+  if (request->hasParam("value")) {
+    ultrasonicEnabled = request->getParam("value")->value() == "true";
+    digitalWrite(ultrasonicEnablePin, ultrasonicEnabled ? LOW : HIGH);
+    request->send(200, "text/plain", "Ultrasonic enabled set to " + String(ultrasonicEnabled ? "true" : "false"));
+  } else {
+    request->send(400, "text/plain", "Missing value parameter");
+  }
+}
+
+String getSettingsJSON() {
+  return "{\"fanSpeed\": " + String(fanSpeed) +
+         ", \"heaterPower\": " + String(heaterPower) +
+         ", \"ultrasonicVoltage\": " + String(ultrasonicVoltage) +
+         ", \"ultrasonicSwitch\": " + (ultrasonicEnabled ? "true" : "false") +
+         ", \"ipAddress\": \"" + WiFi.localIP().toString() +
+         "\", \"currentSSID\": \"" + String(WiFi.SSID()) + "\"}";
+}
+
+String getSSIDsJSON() {
+  String json = "[";
+  for (size_t i = 0; i < ssids.size(); i++) {
+    json += "\"" + ssids[i] + "\"";
+    if (i < ssids.size() - 1) {
+      json += ",";
+    }
+  }
+  json += "]";
+  return json;
+}
+
+String getEditSSIDsJSON() {
+  ssids.clear();
+  for (int i = 0; i < maxEntries; i++) {
+    String savedSSID = readStringFromEEPROM(i * 33);
+    ssids.push_back(savedSSID);
+  }
+  return getSSIDsJSON();
 }
 
 void loop() {
-  // Main loop does nothing, as the server handles requests asynchronously
+  handleScanResults();
+  // Check if it's time to connect
+  if (connecting && millis() >= timer) {
+    onTimer();
+  }
 }
 
-// 读取NTC温度的函数实现
 float readNTCTemperature() {
   int rawValue = analogRead(ntcPin);
   float resistance = (1023.0 / rawValue - 1) * 10000;
-  float temperature = 1 / (log(resistance / 10000) / 3950 + 1 / 298.15) - 273.15;
-  return temperature;
+  return 1 / (log(resistance / 10000) / 3950 + 1 / 298.15) - 273.15;
+}
+
+void startScan() {
+  if (!scanning) {
+    scanning = true;
+    ssids.clear();
+    WiFi.scanNetworks(true); // Start non-blocking scan
+  }
+}
+
+void handleScanResults() {
+  int numNetworks = WiFi.scanComplete();
+  if (numNetworks >= 0) {
+    std::set<String> uniqueSSIDs;
+
+    for (int i = 0; i < numNetworks; i++) {
+      uniqueSSIDs.insert(WiFi.SSID(i));
+    }
+
+    ssids.clear();
+    for (const auto& ssid : uniqueSSIDs) {
+      ssids.push_back(ssid);
+    }
+
+    WiFi.scanDelete(); // Clean up after scan
+    scanning = false; // Reset scanning flag
+  }
+}
+
+void onTimer() {
+  if (connecting) {
+    // Call your Wi-Fi connection function
+    
+    if (tryConnect(ssid, password)) {
+      saveWiFiCredentials(ssid.c_str(), password.c_str(), true);
+      // Optionally send a success message or redirect
+      } else {
+        // Retry with current credentials or handle failure
+      tryConnect(currentSSID, currentSSIDPassword);
+    }
+
+    connecting = false; // Reset the state
+  }
 }

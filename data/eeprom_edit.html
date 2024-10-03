@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSID Manager</title>
+    <script>
+        // Define the base URL here
+        const BASE_URL = ''; // Replace with your local or remote URL
+
+        let clipboard = null;
+
+        async function fetchSSIDs() {
+            const response = await fetch(`${BASE_URL}/getEditSSIDs`);
+            if (!response.ok) {
+                console.error("Failed to fetch SSIDs:", response.statusText);
+                return;
+            }
+            const ssids = await response.json();
+            console.log("Fetched SSIDs:", ssids); // Debugging log
+            const tableBody = document.getElementById('ssidTableBody');
+            tableBody.innerHTML = '';
+        
+            ssids.forEach((ssid, index) => {
+                const row = `<tr>
+                    <td><input type="text" value="${ssid}" id="ssid${index}"></td> <!-- SSID input -->
+                    <td><input type="text" placeholder="Password" id="password${index}"></td>
+                    <td>
+                        <button onclick="editSSID(${index})">Edit</button>
+                        <button onclick="deleteSSID(${index})">Delete</button>
+                        <button onclick="copySSID(${index})">Copy</button>
+                        <button onclick="pasteSSID(${index})">Paste</button>
+                    </td>
+                </tr>`;
+                tableBody.innerHTML += row;
+            });
+        }
+        
+
+        async function editSSID(index) {
+            const ssid = document.getElementById(`ssid${index}`).value; // Get the SSID
+            const password = document.getElementById(`password${index}`).value; // Get the password
+            await fetch(`${BASE_URL}/editSSID?index=${index}&ssid=${encodeURIComponent(ssid)}&password=${encodeURIComponent(password)}`, { method: 'POST' });
+            fetchSSIDs();
+        }
+        
+
+            async function deleteSSID(index) {
+                await fetch(`${BASE_URL}/deleteSSID?index=${index}`, { method: 'POST' });
+                fetchSSIDs();
+            }
+
+            let currentIndex = null; // Variable to store the current index for copying
+            function copySSID(index) {
+                currentIndex = index; // Save the current index for pasting later
+                console.log(`Copied index: ${index}`);
+            }
+
+            async function pasteSSID(index) {
+                if (currentIndex !== null) {
+                    await fetch(`${BASE_URL}/pasteSSID?targetIndex=${index}&sourceIndex=${currentIndex}`, { method: 'POST' });
+                    fetchSSIDs(); // Refresh the SSID list to reflect changes
+                } else {
+                    console.error("No SSID copied. Please copy an SSID first.");
+                }
+            }
+      
+
+        window.onload = fetchSSIDs;
+    </script>
+</head>
+<body>
+    <h1>SSID Manager</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>SSID</th>
+                <th>Password</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="ssidTableBody"></tbody>
+    </table>
+</body>
+</html>

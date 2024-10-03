@@ -2,187 +2,205 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32 Control</title>
     <style>
-      /* Fullscreen background video */
-body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    font-family: 'Arial', sans-serif;
-    color: #ffffff;
-}
+        /* Fullscreen background video */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: auto;
+            font-family: 'Arial', sans-serif;
+            color: #ffffff;
+        }
 
-#bg-video {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    object-fit: cover;
-    z-index: -1;
-    filter: brightness(70%);
-}
+        #bg-video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: -1;
+            filter: brightness(70%);
+        }
 
-/* Container styling */
-.container {
-    position: relative;
-    max-width: 600px;
-    margin: auto;
-    padding: 20px;
-    background: rgba(255, 255, 255, 0.8); /* 更亮的半透明背景 */
-    border-radius: 15px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(10px);
-}
+        /* Container styling */
+        .container {
+            position: relative;
+            max-width: 600px;
+            margin: auto;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            /* 更亮的半透明背景 */
+            border-radius: 15px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }
 
-h1 {
-    text-align: center;
-    font-size: 2.5em;
-    margin: 0;
-    color: #00bfae; /* 活泼的青绿色 */
-    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
-}
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin: 0;
+            color: #00bfae;
+            /* 活泼的青绿色 */
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+        }
 
-p {
-    font-size: 18px;
-    margin: 20px 0;
-    display: flex;
-    align-items: center;
-    color: #333; /* 深灰色文字，确保在白色背景上可读 */
-}
+        p {
+            font-size: 18px;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            color: #333;
+            /* 深灰色文字，确保在白色背景上可读 */
+        }
 
-input[type='range'] {
-    -webkit-appearance: none;
-    width: 100%;
-    height: 8px;
-    background: linear-gradient(90deg, #ff5722 0%, #ffeb3b 100%); /* 明亮的渐变色 */
-    border-radius: 5px;
-    outline: none;
-    margin: 0 10px;
-    cursor: pointer;
-    transition: background 0.3s ease-in-out;
-}
+        .small-font {
+            font-size: 14px; /* Set your desired smaller font size */
+        }
 
-input[type='range']::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 25px;
-    height: 25px;
-    background: #ffffff; /* 亮白色滑块 */
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
-    transition: background 0.3s ease-in-out;
-}
+        input[type='range'] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: linear-gradient(90deg, #ff5722 0%, #ffeb3b 100%);
+            /* 明亮的渐变色 */
+            border-radius: 5px;
+            outline: none;
+            margin: 0 10px;
+            cursor: pointer;
+            transition: background 0.3s ease-in-out;
+        }
 
-input[type='range']::-moz-range-thumb {
-    width: 25px;
-    height: 25px;
-    background: #ffffff; /* 亮白色滑块 */
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
-    transition: background 0.3s ease-in-out;
-}
+        input[type='range']::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 25px;
+            height: 25px;
+            background: #ffffff;
+            /* 亮白色滑块 */
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+            transition: background 0.3s ease-in-out;
+        }
 
-span {
-    font-weight: bold;
-    color: #ff5722; /* 活泼的橙色 */
-    display: inline-block; /* 确保 span 在占位时不会变化 */
-    min-width: 27px; /* 根据需要调整宽度 */
-    text-align: right; /* 右对齐，保持整洁 */
-}
+        input[type='range']::-moz-range-thumb {
+            width: 25px;
+            height: 25px;
+            background: #ffffff;
+            /* 亮白色滑块 */
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+            transition: background 0.3s ease-in-out;
+        }
 
-#qrcode {
-    text-align: center;
-    margin-top: 20px;
-}
+        span {
+            font-weight: bold;
+            color: #ff5722;
+            /* 活泼的橙色 */
+            display: inline-block;
+            /* 确保 span 在占位时不会变化 */
+            min-width: 27px;
+            /* 根据需要调整宽度 */
+            text-align: right;
+            /* 右对齐，保持整洁 */
+        }
 
-footer {
-    text-align: center;
-    margin: 20px 0;
-    color: #333; /* 深灰色 */
-    font-size: 14px;
-}
+        #qrcode {
+            text-align: center;
+            margin-top: 20px;
+        }
 
-/* Status indicator styling */
-.status-indicator {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 10px;
-    background: #ffffff;
-    color: #333;
-    border-radius: 5px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    font-weight: bold;
-    z-index: 1;
-}
-.online {
-    background: #4caf50; /* 绿色表示在线 */
-    color: #ffffff;
-}
-.offline {
-    background: #f44336; /* 红色表示离线 */
-    color: #ffffff;
-}
+        footer {
+            text-align: center;
+            margin: 20px 0;
+            color: #333;
+            /* 深灰色 */
+            font-size: 14px;
+        }
 
-/* Switch styles */
-.switch {
-    position: relative;
-    display: inline-block;
-    width: 60px;
-    height: 34px;
-}
+        /* Status indicator styling */
+        .status-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px;
+            background: #ffffff;
+            color: #333;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            font-weight: bold;
+            z-index: 1;
+        }
 
-.switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
+        .online {
+            background: #4caf50;
+            /* 绿色表示在线 */
+            color: #ffffff;
+        }
 
-.slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
-    border-radius: 34px;
-}
+        .offline {
+            background: #f44336;
+            /* 红色表示离线 */
+            color: #ffffff;
+        }
 
-.slider:before {
-    position: absolute;
-    content: "";
-    height: 26px;
-    width: 26px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: .4s;
-    border-radius: 50%;
-}
+        /* Switch styles */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
 
-input:checked + .slider {
-    background-color: #2196F3;
-}
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
 
-input:checked + .slider:before {
-    transform: translateX(26px);
-}
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
 
-@media (max-width: 600px) {
-    .container {
-        padding: 10px;
-    }
-}
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
 
+        input:checked+.slider {
+            background-color: #2196F3;
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 10px;
+            }
+        }
     </style>
 
-    <script src="https://davidshimjs.github.io/qrcodejs/qrcode.min.js"></script>
+    <script src="/qrcode.min.js"></script>
 
 </head>
 <body>
@@ -213,7 +231,12 @@ input:checked + .slider:before {
 
         <p>加热器实时温度: <span id="temperature">0</span> °C</p>
 
-        <p>主页地址: <span id="homepageUrl"></span></p>
+        <p class="small-font">主页地址: <span id="homepageUrl"></span> (当前SSID: <span id="currentSSID"></span>)</p>
+        <p>选择SSID:
+            <select id="ssidSelect" onclick="connectToSelectedSSID()">
+                <option value="">选择一个SSID</option>
+            </select>
+        </p>
         <div id="qrcode"></div>
 
     </div>
@@ -254,10 +277,11 @@ input:checked + .slider:before {
                     // 显示 IP 地址
                     const homepageUrl = `http://${data.ipAddress}`; // 使用 IP 地址
                     document.getElementById('homepageUrl').innerText = homepageUrl;
-
+                    document.getElementById('currentSSID').innerText = data.currentSSID || "未连接"; // Show current SSID                    
+        
                     // 生成二维码
                     new QRCode(document.getElementById("qrcode"), homepageUrl);
-
+        
                     document.getElementById('fanSpeed').value = data.fanSpeed || 0; // 默认值
                     document.getElementById('fanSpeedValue').innerText = data.fanSpeed || 0;
                     document.getElementById('heaterPower').value = data.heaterPower || 20; // 默认值
@@ -267,6 +291,9 @@ input:checked + .slider:before {
                     // 更新超声波开关状态
                     document.getElementById('ultrasonicSwitch').checked = data.ultrasonicSwitch || false;
                     updateUltrasonicVoltageDisplay(); // 更新显示
+        
+                    // Start scanning for SSIDs
+                    // startScan();
                 })
                 .catch(error => {
                     online = false;
@@ -282,9 +309,71 @@ input:checked + .slider:before {
                     document.getElementById('ultrasonicSwitch').checked = false;
                     updateUltrasonicVoltageDisplay(); // 更新显示
                 });
-        }      
-        
-        
+        }
+
+        let ssidPollingInterval; // Variable to hold the polling interval
+        let shouldPollSSIDs = false; // Flag to control polling
+
+        // Function to initiate the SSID scan
+        function startScan() {
+            fetch(`/scanSSIDs`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Scan initiation failed');
+                    console.log('Scanning started. Check back later for results.');
+                    shouldPollSSIDs = true; // Reset the flag to allow polling
+                    longPollSSIDs(); // Start polling for SSIDs
+                })
+                .catch(error => console.error('Error starting scan:', error));
+        }
+
+        function longPollSSIDs() {
+            if (!shouldPollSSIDs) return; // Stop polling if the flag is false
+
+            fetch(`/getSSIDs`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Error fetching SSIDs');
+                    return response.json();
+                })
+                .then(ssids => {
+                    const ssidSelect = document.getElementById('ssidSelect');
+                    ssidSelect.innerHTML = ''; // Clear existing options
+                    ssids.forEach(ssid => {
+                        const option = document.createElement('option');
+                        option.value = ssid;
+                        option.innerText = ssid;
+                        ssidSelect.appendChild(option);
+                    });
+                    shouldPollSSIDs = false; // Stop polling after a successful response
+                })
+                .catch(error => console.error('Error fetching SSIDs:', error))
+                .finally(() => {
+                    if (shouldPollSSIDs) { // Only set the timeout if polling is still active
+                        clearTimeout(ssidPollingInterval);
+                        ssidPollingInterval = setTimeout(longPollSSIDs, 5000); // Retry after 5 seconds
+                    }
+                });
+        }
+              
+        function connectToSelectedSSID() {
+            const ssid = document.getElementById('ssidSelect').value;
+            if (ssid) {
+                const password = prompt("请输入密码："); // Prompt user for password
+                if (password) {
+                    fetch(`/connectWiFi?ssid=${ssid}&password=${password}`) // New endpoint to connect
+                        .then(response => {
+                            if (response.ok) {
+                                response.text().then(data => alert(data));
+                            } 
+                            else {
+                                alert('连接失败，请重试。');
+                            }
+                        })
+                        .catch(() => {
+                            alert('连接失败，请检查网络。');
+                        });
+                }
+            }
+        }
 
         function updateFanSpeed() {
             var fanSpeed = document.getElementById('fanSpeed').value;
@@ -352,7 +441,14 @@ input:checked + .slider:before {
         }
 
         // Initialize sliders when the page loads
-        window.onload = initializeSliders;
+        window.onload = function() {
+            initializeSliders();
+    
+            // Add the event listener here
+            document.getElementById('ssidSelect').addEventListener('click', function() {
+                startScan();
+            });
+        };
 
         // Periodically check the server status
         setInterval(checkServerStatus, 5000);
