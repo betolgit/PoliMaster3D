@@ -20,7 +20,9 @@ AsyncWebServer server(80); // Web server instance
 
 // Pin configurations
 const int fanPin = 27;
+const int fanPWMChannel = 0;
 const int heaterPin = 26;
+const int heaterPWMChannel = 1;
 const int ultrasonicPin = 25;
 const int ultrasonicEnablePin = 33;
 const int ntcPin = 34; // Temperature sensor pin
@@ -80,9 +82,9 @@ void setup() {
 }
 
 void setupPWM() {
-  ledcSetup(0, 5000, 8);
+  ledcSetup(fanPWMChannel, 5000, 8);
   ledcAttachPin(fanPin, 0);
-  ledcSetup(1, 5000, 8);
+  ledcSetup(heaterPWMChannel, 5000, 8);
   ledcAttachPin(heaterPin, 1);
   pinMode(ultrasonicEnablePin, OUTPUT);
   digitalWrite(ultrasonicEnablePin, HIGH);
@@ -237,7 +239,7 @@ void setupServerRoutes() {
   });
 
   server.on("/setFanSpeed", HTTP_GET, [](AsyncWebServerRequest *request){
-    handlePWMRequest(request, fanSpeed, fanPin, 0, 255);
+    handlePWMRequest(request, fanSpeed, fanPin, 0, 100);
   });
 
   server.on("/setHeaterPower", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -366,7 +368,20 @@ void setupEditRoutes() {
 void handlePWMRequest(AsyncWebServerRequest *request, int &powerVariable, int pin, int minValue, int maxValue) {
   if (request->hasParam("value")) {
     powerVariable = request->getParam("value")->value().toInt();
-    ledcWrite(pin, map(powerVariable, minValue, maxValue, 0, 255));
+
+    int write_channel;
+    switch (pin)
+    {
+    case fanPin:
+      write_channel = fanPWMChannel;
+      break;
+    case heaterPin:
+      write_channel = heaterPWMChannel;    
+    default:
+      break;
+    }
+
+    ledcWrite(write_channel, map(powerVariable, minValue, maxValue, 0, 255));
     request->send(200, "text/plain", "Value set to " + String(powerVariable));
   } else {
     request->send(400, "text/plain", "Missing value parameter");
