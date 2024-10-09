@@ -9,23 +9,32 @@
 #include <vector>
 #include <random>
 #include "esp_task_wdt.h"
+#include "ntc_polimaster.h"
 
-const char* base_ssid = "POLIMASTER"; // AP SSID
+const uint kSerialBaudRate = 115200;
+
+const char* kBaseSsid = "POLIMASTER"; // AP SSID
 char ap_ssid[32]; // Buffer for SSID
-const char* ap_password = ""; // AP password
-const int eepromSize = 512; // EEPROM size
-const int maxEntries = 10; // Max SSID and password entries
+const char* kApPassword = ""; // AP password
+const int kEepromSize = 512; // EEPROM size
+const int kMaxEntries = 10; // Max SSID and password entries
 
 AsyncWebServer server(80); // Web server instance
 
 // Pin configurations
-const int fanPin = 27;
-const int fanPWMChannel = 0;
-const int heaterPin = 26;
-const int heaterPWMChannel = 1;
-const int ultrasonicPin = 25;
-const int ultrasonicEnablePin = 33;
-const int ntcPin = 34; // Temperature sensor pin
+const int kFanPin = 27;
+const int kFanPWMChannel = 0;
+const int kHeaterPin = 26;
+const int kHeaterPWMChannel = 1;
+const int kUltrasonicPin = 25;
+const int kUltrasonicEnablePin = 33;
+const int kNtcPin = 32; // Temperature sensor pin
+
+// Thermistor configuration
+const double kNtcRefVoltage = 3.325;
+const double kNtcVoltageNominalFactor = 1.0146;
+const double kNtcSerialResistor = 15000;
+const double kNtcResistanceDeltaRatio = 0.85;
 
 // Device state variables
 int fanSpeed = 0;
@@ -43,7 +52,7 @@ bool connecting = false;
 unsigned long timer; // Declare timer here
 
 // Function prototypes
-float readNTCTemperature();
+double readNTCTemperature();
 void startScan();
 void handleScanResults();
 void onTimer();
@@ -69,9 +78,9 @@ String getEditSSIDsJSON();
 
 
 void setup() {
-  Serial.begin(115200);
-  EEPROM.begin(eepromSize);
-  
+  Serial.begin(kSerialBaudRate);
+  EEPROM.begin(kEepromSize);
+
   setupPWM();
   setupWiFi();
   setupMDNS();
@@ -82,16 +91,16 @@ void setup() {
 }
 
 void setupPWM() {
-  ledcSetup(fanPWMChannel, 5000, 8);
-  ledcAttachPin(fanPin, 0);
-  ledcSetup(heaterPWMChannel, 5000, 8);
-  ledcAttachPin(heaterPin, 1);
-  pinMode(ultrasonicEnablePin, OUTPUT);
-  digitalWrite(ultrasonicEnablePin, HIGH);
+  ledcSetup(kFanPWMChannel, 5000, 8);
+  ledcAttachPin(kFanPin, 0);
+  ledcSetup(kHeaterPWMChannel, 5000, 8);
+  ledcAttachPin(kHeaterPin, 1);
+  pinMode(kUltrasonicEnablePin, OUTPUT);
+  digitalWrite(kUltrasonicEnablePin, HIGH);
 
-  if (ultrasonicPin == 25 || ultrasonicPin == 26) {
+  if (kUltrasonicPin == 25 || kUltrasonicPin == 26) {
     analogWriteResolution(8);
-    dacWrite(ultrasonicPin, 255);
+    dacWrite(kUltrasonicPin, 255);
   } else {
     Serial.println("Invalid DAC pin for ultrasonic.");
   }
@@ -107,7 +116,7 @@ void setupWiFi() {
 
   // Check if the base SSID is in use
   for (int i = 0; i < numNetworks; i++) {
-    if (WiFi.SSID(i) == base_ssid) {
+    if (WiFi.SSID(i) == kBaseSsid) {
       ssidConflict = true;
       break;
     }
@@ -115,13 +124,13 @@ void setupWiFi() {
 
   // If there's a conflict, append a random postfix
   if (ssidConflict) {
-    snprintf(ap_ssid, sizeof(ap_ssid), "%s_%d", base_ssid, random(1000, 9999));
+    snprintf(ap_ssid, sizeof(ap_ssid), "%s_%d", kBaseSsid, random(1000, 9999));
   } else {
-    snprintf(ap_ssid, sizeof(ap_ssid), "%s", base_ssid);
+    snprintf(ap_ssid, sizeof(ap_ssid), "%s", kBaseSsid);
   }
 
   // Start the AP
-  WiFi.softAP(ap_ssid, ap_password);
+  WiFi.softAP(ap_ssid, kApPassword);
   Serial.println("AP Started with SSID: " + String(ap_ssid));
 
   if (!connectToWiFi(numNetworks)) {
@@ -162,7 +171,7 @@ bool connectToWiFi(int numWiFiFound) {
     Serial.println(ssid);
   }
 
-  for (int i = 0; i < maxEntries; i++) {
+  for (int i = 0; i < kMaxEntries; i++) {
     char validByte = EEPROM.read(i * 33 + 32); // Read validity first
 
     // Only read SSID and password if the entry is valid
@@ -205,7 +214,7 @@ bool tryConnect(const String& ssid, const String& password) {
 }
 
 void saveWiFiCredentials(const char* ssid, const char* password, bool success) {
-  for (int i = maxEntries - 1; i > 0; i--) {
+  for (int i = kMaxEntries - 1; i > 0; i--) {
     writeStringToEEPROM(i * 33, readStringFromEEPROM((i - 1) * 33).c_str());
     writeStringToEEPROM(i * 33 + 16, readStringFromEEPROM((i - 1) * 33 + 16).c_str());
     EEPROM.write(i * 33 + 32, EEPROM.read((i - 1) * 33 + 32));
@@ -239,11 +248,11 @@ void setupServerRoutes() {
   });
 
   server.on("/setFanSpeed", HTTP_GET, [](AsyncWebServerRequest *request){
-    handlePWMRequest(request, fanSpeed, fanPin, 0, 100);
+    handlePWMRequest(request, fanSpeed, kFanPin, 0, 100);
   });
 
   server.on("/setHeaterPower", HTTP_GET, [](AsyncWebServerRequest *request){
-    handlePWMRequest(request, heaterPower, heaterPin, 20, 95);
+    handlePWMRequest(request, heaterPower, kHeaterPin, 20, 95);
   });
 
   server.on("/setUltrasonicVoltage", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -312,7 +321,7 @@ void setupEditRoutes() {
       String ssid = request->getParam("ssid")->value();
       String password = request->getParam("password")->value();
 
-      if (index >= 0 && index < maxEntries) {
+      if (index >= 0 && index < kMaxEntries) {
         writeStringToEEPROM(index * 33, ssid.c_str());
         writeStringToEEPROM(index * 33 + 16, password.c_str());
         EEPROM.write(index * 33 + 32, 1);
@@ -329,7 +338,7 @@ void setupEditRoutes() {
   server.on("/deleteSSID", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("index")) {
       int index = request->getParam("index")->value().toInt();
-      if (index >= 0 && index < maxEntries) {
+      if (index >= 0 && index < kMaxEntries) {
         writeStringToEEPROM(index * 33, "");
         writeStringToEEPROM(index * 33 + 16, "");
         EEPROM.write(index * 33 + 32, 0);
@@ -348,7 +357,7 @@ void setupEditRoutes() {
       int targetIndex = request->getParam("targetIndex")->value().toInt();
       int sourceIndex = request->getParam("sourceIndex")->value().toInt();
 
-      if (targetIndex >= 0 && targetIndex < maxEntries && sourceIndex >= 0 && sourceIndex < maxEntries) {
+      if (targetIndex >= 0 && targetIndex < kMaxEntries && sourceIndex >= 0 && sourceIndex < kMaxEntries) {
         String ssid = readStringFromEEPROM(sourceIndex * 33);
         String password = readStringFromEEPROM(sourceIndex * 33 + 16);
         writeStringToEEPROM(targetIndex * 33, ssid.c_str());
@@ -372,11 +381,11 @@ void handlePWMRequest(AsyncWebServerRequest *request, int &powerVariable, int pi
     int write_channel;
     switch (pin)
     {
-    case fanPin:
-      write_channel = fanPWMChannel;
+    case kFanPin:
+      write_channel = kFanPWMChannel;
       break;
-    case heaterPin:
-      write_channel = heaterPWMChannel;    
+    case kHeaterPin:
+      write_channel = kHeaterPWMChannel;    
     default:
       break;
     }
@@ -391,8 +400,8 @@ void handlePWMRequest(AsyncWebServerRequest *request, int &powerVariable, int pi
 void handleUltrasonicVoltage(AsyncWebServerRequest *request) {
   if (request->hasParam("value")) {
     ultrasonicVoltage = request->getParam("value")->value().toInt();
-    dacWrite(ultrasonicPin, map(ultrasonicVoltage, 1.6, 24, 255, 112));
-    request->send(200, "text/plain", "Ultrasonic voltage set to " + String(ultrasonicVoltage));
+    dacWrite(kUltrasonicPin, map(ultrasonicVoltage, 1.6, 24, 255, 112));
+    request->send(200, "text/plain", "Ultrasonic ntc_voltage set to " + String(ultrasonicVoltage));
   } else {
     request->send(400, "text/plain", "Missing value parameter");
   }
@@ -401,7 +410,7 @@ void handleUltrasonicVoltage(AsyncWebServerRequest *request) {
 void handleUltrasonicSwitch(AsyncWebServerRequest *request) {
   if (request->hasParam("value")) {
     ultrasonicEnabled = request->getParam("value")->value() == "true";
-    digitalWrite(ultrasonicEnablePin, ultrasonicEnabled ? LOW : HIGH);
+    digitalWrite(kUltrasonicEnablePin, ultrasonicEnabled ? LOW : HIGH);
     request->send(200, "text/plain", "Ultrasonic enabled set to " + String(ultrasonicEnabled ? "true" : "false"));
   } else {
     request->send(400, "text/plain", "Missing value parameter");
@@ -431,7 +440,7 @@ String getSSIDsJSON() {
 
 String getEditSSIDsJSON() {
   ssids.clear();
-  for (int i = 0; i < maxEntries; i++) {
+  for (int i = 0; i < kMaxEntries; i++) {
     String savedSSID = readStringFromEEPROM(i * 33);
     ssids.push_back(savedSSID);
   }
@@ -446,10 +455,29 @@ void loop() {
   }
 }
 
-float readNTCTemperature() {
-  int rawValue = analogRead(ntcPin);
-  float resistance = (1023.0 / rawValue - 1) * 10000;
-  return 1 / (log(resistance / 10000) / 3950 + 1 / 298.15) - 273.15;
+double readNTCTemperature() {  
+  // Read the analog value from the NTC pin
+  int analogValue = analogRead(kNtcPin);
+
+  // Convert the analog reading (0-4095) to a voltage
+  double voltage = (analogValue / 4095.0) * kNtcRefVoltage;
+  double nominal_voltage = kNtcVoltageNominalFactor * voltage;
+
+  // Calculate the resistance of the NTC thermistor
+  // Using the voltage divider formula: R_ntc = R_serial * (V_test / V_ntc - 1)   
+  if (nominal_voltage <= 2.78  ){
+    nominal_voltage += 0.133 * (2.78 - nominal_voltage)/2.78;
+  }
+
+  double ntcResistance = nominal_voltage * kNtcSerialResistor / (kNtcRefVoltage - nominal_voltage);
+
+  // Serial.println("pin_adc_value: "+String(analogValue));
+  // Serial.println("ntcResistance: "+String(ntcResistance));
+  // Serial.println("nominal_voltage: "+String(nominal_voltage));
+  // Serial.println("temperature: "+String(tmp));
+  // Serial.println("");
+
+  return resistanceToTemperature(ntcResistance);
 }
 
 void startScan() {

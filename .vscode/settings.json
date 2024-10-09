@@ -1,4 +1,4 @@
-{
+{  
   "C_Cpp_Runner.cCompilerPath": "/home/peter/.platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-gcc",
   "C_Cpp_Runner.cppCompilerPath": "/home/peter/.platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-g++",
   "C_Cpp_Runner.debuggerPath": "/home/peter/.platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-gdb",
@@ -268,7 +268,7 @@
     "/home/peter/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
     "/home/peter/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
     "/home/peter/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
-    "/home/peter/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
+    "/home/peter/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",    
     ""
   ],
   "C_Cpp_Runner.includeSearch": [
@@ -289,5 +289,8 @@
   "C_Cpp_Runner.showCompilationTime": false,
   "C_Cpp_Runner.useLinkTimeOptimization": false,
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
-  "cortex-debug.variableUseNaturalFormat": true
+  "cortex-debug.variableUseNaturalFormat": true,
+  "files.associations": {
+    "cmath": "cpp"
+  }
 }
